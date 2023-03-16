@@ -7,6 +7,7 @@
 , flex
 , perl
 , libxslt
+, heimdal
 , docbook_xsl
 , fixDarwinDylibNames
 , docbook_xml_dtd_45
@@ -20,17 +21,11 @@
 , gnutls
 , libunwind
 , systemd
-, samba
-, talloc
 , jansson
-, ldb
 , libtasn1
 , tdb
-, tevent
-, libxcrypt
 , cmocka
 , rpcsvc-proto
-, bash
 , python3Packages
 , nixosTests
 
@@ -50,11 +45,11 @@ with lib;
 
 stdenv.mkDerivation rec {
   pname = "samba";
-  version = "4.17.5";
+  version = "4.15.11";
 
   src = fetchurl {
     url = "mirror://samba/pub/samba/stable/${pname}-${version}.tar.gz";
-    hash = "sha256-67eIDUdP/AnXO1/He8vWV/YjWRAzczGpwk1/acoRRCs=";
+    sha256 = "sha256-LzBZgNScdyPL7ygf/yuBou6vrlHli1Fyu0PZaT74lTs=";
   };
 
   outputs = [ "out" "dev" "man" ];
@@ -75,24 +70,20 @@ stdenv.mkDerivation rec {
     flex
     perl
     perl.pkgs.ParseYapp
-    perl.pkgs.JSON
     libxslt
     buildPackages.stdenv.cc
+    heimdal
     docbook_xsl
     docbook_xml_dtd_45
     cmocka
     rpcsvc-proto
-  ] ++ optional (stdenv.buildPlatform != stdenv.hostPlatform) samba # asn1_compile/compile_et
-    ++ optionals stdenv.isDarwin [
+  ] ++ optionals stdenv.isDarwin [
     fixDarwinDylibNames
   ];
 
-  wafPath = "buildtools/bin/waf";
-
   buildInputs = [
-    bash
-    python3Packages.wrapPython
     python3Packages.python
+    python3Packages.wrapPython
     readline
     popt
     dbus
@@ -102,12 +93,8 @@ stdenv.mkDerivation rec {
     zlib
     libunwind
     gnutls
-    ldb
-    talloc
     libtasn1
     tdb
-    tevent
-    libxcrypt
   ] ++ optionals stdenv.isLinux [ liburing systemd ]
     ++ optionals enableLDAP [ openldap.dev python3Packages.markdown ]
     ++ optional (enablePrinting && stdenv.isLinux) cups
@@ -118,6 +105,8 @@ stdenv.mkDerivation rec {
     ++ optionals (enableGlusterFS && stdenv.isLinux) [ glusterfs libuuid ]
     ++ optional enableAcl acl
     ++ optional enablePam pam;
+
+  wafPath = "buildtools/bin/waf";
 
   postPatch = ''
     # Removes absolute paths in scripts
@@ -131,7 +120,6 @@ stdenv.mkDerivation rec {
 
   preConfigure = ''
     export PKGCONFIG="$PKG_CONFIG"
-    export PYTHONHASHSEED=1
   '';
 
   wafConfigureFlags = [
@@ -146,13 +134,12 @@ stdenv.mkDerivation rec {
   ++ optionals (!enableLDAP) [
     "--without-ldap"
     "--without-ads"
-    "--bundled-libraries=!ldb,!pyldb-util!talloc,!pytalloc-util,!tevent,!tdb,!pytdb"
   ] ++ optional enableProfiling "--with-profiling-data"
     ++ optional (!enableAcl) "--without-acl-support"
     ++ optional (!enablePam) "--without-pam"
     ++ optionals (stdenv.hostPlatform != stdenv.buildPlatform) [
     "--bundled-libraries=!asn1_compile,!compile_et"
-  ] ++ optionals stdenv.isAarch32 [
+  ] ++ optional stdenv.isAarch32 [
     # https://bugs.gentoo.org/683148
     "--jobs 1"
   ];
@@ -166,13 +153,6 @@ stdenv.mkDerivation rec {
 
   preBuild = ''
     export MAKEFLAGS="-j $NIX_BUILD_CORES"
-  '';
-
-  # Save asn1_compile and compile_et so they are available to run on the build
-  # platform when cross-compiling
-  postInstall = optionalString (stdenv.hostPlatform == stdenv.buildPlatform) ''
-    mkdir -p "$dev/bin"
-    cp bin/asn1_compile bin/compile_et "$dev/bin"
   '';
 
   # Some libraries don't have /lib/samba in RPATH but need it.
@@ -190,19 +170,13 @@ stdenv.mkDerivation rec {
     EOF
     find $out -type f -regex '.*\.so\(\..*\)?' -exec $SHELL -c "$SCRIPT" \;
 
+    # Samba does its own shebang patching, but uses build Python
+    find "$out/bin" -type f -executable -exec \
+      sed -i '1 s^#!${python3Packages.python.pythonForBuild}/bin/python.*^#!${python3Packages.python.interpreter}^' {} \;
+
     # Fix PYTHONPATH for some tools
     wrapPythonPrograms
-
-    # Samba does its own shebang patching, but uses build Python
-    find $out/bin -type f -executable | while read file; do
-      isScript "$file" || continue
-      sed -i 's^${lib.getBin buildPackages.python3Packages.python}/bin^${lib.getBin python3Packages.python}/bin^' "$file"
-    done
   '';
-
-  disallowedReferences =
-    lib.optionals (buildPackages.python3Packages.python != python3Packages.python)
-      [ buildPackages.python3Packages.python ];
 
   passthru = {
     tests.samba = nixosTests.samba;
