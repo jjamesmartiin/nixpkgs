@@ -11,7 +11,7 @@
   nixosTests,
 
   defaultGemConfig,
-  ruby_3_3,
+  ruby_3_4,
   gzip,
   gnutar,
   git,
@@ -53,16 +53,16 @@
 }:
 
 let
-  version = "2026.1.3";
+  version = "2026.3.0";
 
   src = fetchFromGitHub {
     owner = "discourse";
     repo = "discourse";
     rev = "v${version}";
-    sha256 = "sha256-0jbO1rJQ0AISo7h+SZfovubReCjR2zT6KWX9LxBeFtE=";
+    sha256 = "sha256-EbK0hD0AaINvq1Q4mHJu0rvM8DH+OVL8Gs48gvAI6lE=";
   };
 
-  ruby = ruby_3_3;
+  ruby = ruby_3_4;
 
   runtimeDeps = [
     # For backups, themes and assets
@@ -306,10 +306,11 @@ let
       inherit version src;
       pnpm = pnpm;
       fetcherVersion = 1;
-      hash = "sha256-/vPNHEB/ZuHWnSLqfz2NM/scSRH9wzotzjunDAw5Imc=";
+      hash = "sha256-Y6oWX05B6SsnNz4g/YISmASCmUIoLlXGPhgGK72Cbro=";
     };
 
     nativeBuildInputs = runtimeDeps ++ [
+      rubyEnv.wrappedRuby
       (postgresql.withPackages (ps: [
         ps.pgvector
       ]))
@@ -343,11 +344,6 @@ let
       # Fix the rake command used to recursively execute itself in the
       # assets precompilation task.
       ./assets_rake_command.patch
-
-      # Little does he know, so he decided there is no need to generate the
-      # theme-transpiler over and over again. Which at the same time allows the removal
-      # of javascript devDependencies from the runtime environment.
-      ./prebuild-asset-processor.patch
     ];
 
     env.RAILS_ENV = "production";
@@ -358,6 +354,7 @@ let
     # requires full git and repository, even a src `leaveDotGit` is not enough. So patch this function to return the version
     postPatch = ''
       substituteInPlace script/assemble_ember_build.rb --replace-fail "def core_tree_hash" "def core_tree_hash; return \"v${version}\""
+      substituteInPlace script/assemble_ember_build.rb --replace-fail "system(\"bin/rake\"" "system(\"ruby\", \"bin/rake\""
     '';
 
     # We have to set up an environment that is close enough to
@@ -455,11 +452,6 @@ let
 
       # Make sure the notification email setting applies
       ./notification_email.patch
-
-      # Little does he know, so he decided there is no need to generate the
-      # theme-transpiler over and over again. Which at the same time allows the removal
-      # of javascript devDependencies from the runtime environment.
-      ./prebuild-asset-processor.patch
 
       # Our app/assets/generated folder is a symlink, but the ruby File.mkdir_p doesn't allow
       # a symlink in the way to the last directory. This patch explicitly resolves the symlink.
