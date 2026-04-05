@@ -11,7 +11,7 @@
   nixosTests,
 
   defaultGemConfig,
-  ruby_3_3,
+  ruby_3_4,
   gzip,
   gnutar,
   git,
@@ -62,7 +62,7 @@ let
     sha256 = "sha256-EbK0hD0AaINvq1Q4mHJu0rvM8DH+OVL8Gs48gvAI6lE=";
   };
 
-  ruby = ruby_3_3;
+  ruby = ruby_3_4;
 
   runtimeDeps = [
     # For backups, themes and assets
